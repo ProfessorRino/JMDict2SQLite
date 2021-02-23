@@ -36,13 +36,14 @@ conn = sqlite3.connect(path + name)
 cur = conn.cursor()
 
 cur.execute("Drop table if exists JEX;")
-cur.execute("Create table JEX (key int, resultword text, searchword text, lan text, pri int)")
+cur.execute("Create table JEX (primaryKey int PRIMARY KEY, key int, resultword text, searchword text, lan text, pri int)")
 cur.execute("Drop table if exists ATTRIBUTES;")
-cur.execute("Create table ATTRIBUTES (key int, tagstring text);")
+cur.execute("Create table ATTRIBUTES (primaryKey int PRIMARY KEY, key int, tagstring text);")
 
 # database scheme:
 # table JEX (X is whatever third language, delete other languages later)
-# key
+# primaryKey -> Room requires an explicit one
+# key identifies dictionary items as corresponding to each other
 # resultword text with all remarks, usually in ()
 # searchword text without remarks, brackets and everything in between removed
 # LAN:
@@ -57,8 +58,9 @@ cur.execute("Create table ATTRIBUTES (key int, tagstring text);")
 # 0 no priority
 # 1 frequently used
 # table ATTRIBUTES
+# primaryKey 
 # key
-# tagstring
+# tagstring contains the abbreviated annotations to a dictionary item
 
 def removeBrackets(word):
     return re.sub(r" ?\([^)]+\)", "", word)
@@ -70,34 +72,36 @@ def getPriority(priorities):
     return 0                
 
 priorityList = ["news1", "ichi1", "spec1", "spec2", "gai1"]
-insertWord = """Insert into JEX values (?, ?, ?, ?, ?)"""
+insertWord = """Insert into JEX values (?, ?, ?, ?, ?, ?)"""
 
 tree = ET.parse(targetPath)
 root = tree.getroot()
 
 batchCount = 0
+keyCount = 0
 for entry in root.findall("entry"):
     key = entry.find("ent_seq")
     for reading in entry.findall("r_ele"):
         word = reading.find("reb").text
         pri = getPriority(reading.findall("re_pri"))
-        cur.execute(insertWord, (int(key.text), word, removeBrackets(word), "R", pri))
+        cur.execute(insertWord, (None, int(key.text), word, removeBrackets(word), "R", pri))
     for kanji in entry.findall("k_ele"):
         word  = kanji.find("keb").text
         pri = getPriority(kanji.findall("ke_pri"))
-        cur.execute(insertWord, (int(key.text), word, removeBrackets(word), "K", pri))
+        cur.execute(insertWord, (None, int(key.text), word, removeBrackets(word), "K", pri))
     for sense in entry.findall("sense"):
         for gloss in sense.findall("gloss"):
             word = gloss.text
             lan = gloss.attrib['{http://www.w3.org/XML/1998/namespace}lang']
             if (lan == "eng" or lan == "ger") : #or lan == "hun" or lan == "dut" or lan == "rus"):
-                cur.execute(insertWord, (int(key.text), word, removeBrackets(word), lan, 0))
+                cur.execute(insertWord, (None, int(key.text), word, removeBrackets(word), lan, 0))
     batchCount += 1
     if (batchCount > 50000):
         conn.commit()
         batchCount = 0
 conn.commit()
 cur.execute("""CREATE INDEX 'KEY_INDEX' ON 'JEX' ('key','searchword','resultword','lan', 'pri');""")
+conn.commit()
 cur.execute("""CREATE INDEX 'SEARCH_INDEX' ON 'JEX' ('searchword','key','resultword','lan', 'pri');""")
 conn.commit()
 
@@ -105,19 +109,19 @@ print("building annotations")
 #parsing one more time with lxml just for annotations, because they are not to be expanded 
 parser = et.XMLParser(resolve_entities=False)
 root = et.parse(targetPath, parser).getroot()
-insertAnnot = """Insert into ATTRIBUTES values (?,?)"""
-batchCount = 0
+insertAnnot = """Insert into ATTRIBUTES values (?,?,?)"""
 for entry in root.findall("entry"):
     key = entry.find("ent_seq")
     for pos in entry.iter("pos"):
         pos = str(et.tostring(pos)).replace("b\'<pos>","").replace("</pos>","").replace("&","").replace("\\n","").replace("\'","").replace(";","")
-        cur.execute(insertAnnot, (int(key.text), pos))
+        cur.execute(insertAnnot, (None, int(key.text), pos))
     batchCount += 1
     if (batchCount > 50000):
         conn.commit()
         batchCount = 0
 conn.commit()   
 cur.execute("""CREATE INDEX 'ANNOT_INDEX' ON 'ATTRIBUTES' ('key','tagstring');""")
+conn.commit() 
 cur.execute("VACUUM;")
 conn.commit()
 cur.close()
@@ -125,5 +129,4 @@ conn.close()
 print("Deleting .zip and .xml")
 os.remove(zipPath)
 os.remove(targetPath)
-
 print("Finished, .db is ready")
