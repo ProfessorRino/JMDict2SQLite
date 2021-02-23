@@ -74,13 +74,14 @@ insertWord = """Insert into JEX values (?, ?, ?, ?, ?)"""
 
 tree = ET.parse(targetPath)
 root = tree.getroot()
+
+batchCount = 0
 for entry in root.findall("entry"):
     key = entry.find("ent_seq")
     for reading in entry.findall("r_ele"):
         word = reading.find("reb").text
         pri = getPriority(reading.findall("re_pri"))
         cur.execute(insertWord, (int(key.text), word, removeBrackets(word), "R", pri))
-        conn.commit()
     for kanji in entry.findall("k_ele"):
         word  = kanji.find("keb").text
         pri = getPriority(kanji.findall("ke_pri"))
@@ -89,24 +90,33 @@ for entry in root.findall("entry"):
         for gloss in sense.findall("gloss"):
             word = gloss.text
             lan = gloss.attrib['{http://www.w3.org/XML/1998/namespace}lang']
-            if (lan == "eng" or lan == "ger"): # or lan == "hun" or lan == "dut" or lan == "rus"): 
+            if (lan == "eng" or lan == "ger") : #or lan == "hun" or lan == "dut" or lan == "rus"):
                 cur.execute(insertWord, (int(key.text), word, removeBrackets(word), lan, 0))
-    conn.commit()
+    batchCount += 1
+    if (batchCount > 50000):
+        conn.commit()
+        batchCount = 0
+conn.commit()
 cur.execute("""CREATE INDEX 'KEY_INDEX' ON 'JEX' ('key','searchword','resultword','lan', 'pri');""")
 cur.execute("""CREATE INDEX 'SEARCH_INDEX' ON 'JEX' ('searchword','key','resultword','lan', 'pri');""")
-
 conn.commit()
 
+print("building annotations")
 #parsing one more time with lxml just for annotations, because they are not to be expanded 
 parser = et.XMLParser(resolve_entities=False)
 root = et.parse(targetPath, parser).getroot()
 insertAnnot = """Insert into ATTRIBUTES values (?,?)"""
+batchCount = 0
 for entry in root.findall("entry"):
     key = entry.find("ent_seq")
     for pos in entry.iter("pos"):
         pos = str(et.tostring(pos)).replace("b\'<pos>","").replace("</pos>","").replace("&","").replace("\\n","").replace("\'","").replace(";","")
         cur.execute(insertAnnot, (int(key.text), pos))
-    conn.commit()
+    batchCount += 1
+    if (batchCount > 50000):
+        conn.commit()
+        batchCount = 0
+conn.commit()   
 cur.execute("""CREATE INDEX 'ANNOT_INDEX' ON 'ATTRIBUTES' ('key','tagstring');""")
 cur.execute("VACUUM;")
 conn.commit()
