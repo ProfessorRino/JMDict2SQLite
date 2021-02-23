@@ -89,10 +89,12 @@ for entry in root.findall("entry"):
         for gloss in sense.findall("gloss"):
             word = gloss.text
             lan = gloss.attrib['{http://www.w3.org/XML/1998/namespace}lang']
-            if (lan == "eng" or lan == "ger" or lan == "hun" or lan == "dut" or lan == "rus"):
+            if (lan == "eng" or lan == "ger"): # or lan == "hun" or lan == "dut" or lan == "rus"): 
                 cur.execute(insertWord, (int(key.text), word, removeBrackets(word), lan, 0))
     conn.commit()
-cur.execute("""CREATE INDEX 'COMPLETE' ON 'JEX' ('key','searchword','resultword','lan', 'pri');""")
+cur.execute("""CREATE INDEX 'KEY_INDEX' ON 'JEX' ('key','searchword','resultword','lan', 'pri');""")
+cur.execute("""CREATE INDEX 'SEARCH_INDEX' ON 'JEX' ('searchword','key','resultword','lan', 'pri');""")
+
 conn.commit()
 
 #parsing one more time with lxml just for annotations, because they are not to be expanded 
@@ -104,8 +106,8 @@ for entry in root.findall("entry"):
     for pos in entry.iter("pos"):
         pos = str(et.tostring(pos)).replace("b\'<pos>","").replace("</pos>","").replace("&","").replace("\\n","").replace("\'","").replace(";","")
         cur.execute(insertAnnot, (int(key.text), pos))
-    conn.commit()       
-
+    conn.commit()
+cur.execute("""CREATE INDEX 'ANNOT_INDEX' ON 'ATTRIBUTES' ('key','tagstring');""")
 cur.execute("VACUUM;")
 conn.commit()
 cur.close()
