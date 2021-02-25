@@ -65,6 +65,11 @@ cur.execute("Create table ATTRIBUTES (primaryKey int PRIMARY KEY, key int, tagst
 def removeBrackets(word):
     return re.sub(r" ?\([^)]+\)", "", word)
 
+def removeInfinitiveTo(word):
+    if (word.startswith("to ")):
+        return word[3:]
+    return word
+
 def getPriority(priorities):
     for priority in priorities:
             if priority.text in priorityList:
@@ -94,7 +99,10 @@ for entry in root.findall("entry"):
             word = gloss.text
             lan = gloss.attrib['{http://www.w3.org/XML/1998/namespace}lang']
             if (lan == "eng" or lan == "ger") : #or lan == "hun" or lan == "dut" or lan == "rus"):
-                cur.execute(insertWord, (None, int(key.text), word, removeBrackets(word), lan, 0))
+                filteredSearchWord = removeBrackets(word)
+                if (lan == "eng"):
+                    filteredSearchWord = removeInfinitiveTo(filteredSearchWord)
+                cur.execute(insertWord, (None, int(key.text), word, filteredSearchWord, lan, 0))
     batchCount += 1
     if (batchCount > 50000):
         conn.commit()
@@ -110,6 +118,7 @@ print("building annotations")
 parser = et.XMLParser(resolve_entities=False)
 root = et.parse(targetPath, parser).getroot()
 insertAnnot = """Insert into ATTRIBUTES values (?,?,?)"""
+batchCount = 0
 for entry in root.findall("entry"):
     key = entry.find("ent_seq")
     for pos in entry.iter("pos"):
